@@ -32,6 +32,7 @@ router.post('/subscribe', express.json(), (req: Request, res: Response) => {
   const { user_id, event, event_id } = req.body;
   if (!user_id || !event || !event_id) return res.status(400).send("Required: user_id, event, event_id");
   subscribe(user_id, event, event_id);
+  console.log(`[SSE] Subscribed: user_id=${user_id}, event=${event}, event_id=${event_id}`);
   res.send('OK');
 });
 
@@ -48,6 +49,7 @@ router.post('/pushEvent', express.json(), (req: Request, res: Response) => {
   if (!event || !event_id) return res.status(400).send('Missing event or event_id');
   const targets = getSubscribers(event, event_id);
   for (const client of targets) {
+    console.log(`[SSE] Pushing event: user_id=${client.user_id}, event=${event}, event_id=${event_id}`);
     client.res.write(`event: ${event}\ndata: ${JSON.stringify(payload ?? {})}\n\n`);
   }
   res.send('OK');
