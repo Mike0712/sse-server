@@ -46,6 +46,7 @@ router.post('/unsubscribe', express.json(), (req: Request, res: Response) => {
 
 router.post('/pushEvent', express.json(), (req: Request, res: Response) => {
   const { event, event_id, payload } = req.body;
+  console.log({event, event_id, payload}, '[SSE] Pushing event');
   if (!event || !event_id) return res.status(400).send('Missing event or event_id');
   const targets = getSubscribers(event, event_id);
   for (const client of targets) {
