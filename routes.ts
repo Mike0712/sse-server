@@ -34,22 +34,61 @@ router.get('/events', (req: Request, res: Response) => {
       } else {
         clearInterval(heartbeatInterval);
         removeClient(user_id);
+        if (!res.destroyed && !res.closed) {
+          res.end();
+        }
       }
     } catch (error) {
       clearInterval(heartbeatInterval);
       removeClient(user_id);
+      if (!res.destroyed && !res.closed) {
+        res.destroy();
+      }
     }
   }, 30000);
   
   req.on('close', () => {
     clearInterval(heartbeatInterval);
     removeClient(user_id);
+    // Явно закрываем response stream
+    if (!res.destroyed && !res.closed) {
+      res.end();
+    }
     console.log(`[SSE] Disconnected: user_id=${user_id}`);
+    
+    // Отправляем уведомление на бэкенд через 7 секунд
+    setTimeout(async () => {
+      try {
+        const backendUrl = process.env.BACKEND_URL;
+        const response = await fetch(`${backendUrl}/api/users/sse/disconnected`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            user_id: user_id,
+            timestamp: new Date().toISOString(),
+          }),
+        });
+        
+        if (!response.ok) {
+          console.log(`[SSE] Failed to notify backend about disconnect: ${response.status}`);
+        } else {
+          console.log(`[SSE] Notified backend about disconnect: user_id=${user_id}`);
+        }
+      } catch (error) {
+        console.log(`[SSE] Error notifying backend about disconnect: user_id=${user_id}`, error);
+      }
+    }, 7000);
   });
   
   res.on('error', (error) => {
     clearInterval(heartbeatInterval);
     removeClient(user_id);
+    // Закрываем stream при ошибке
+    if (!res.destroyed && !res.closed) {
+      res.destroy();
+    }
     console.log(`[SSE] Connection error: user_id=${user_id}`, error);
   });
 });
