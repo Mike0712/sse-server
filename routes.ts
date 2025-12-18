@@ -1,4 +1,5 @@
 import express, { Router, Request, Response } from 'express';
+import jwt from 'jsonwebtoken';
 import {
   addClient,
   removeClient,
@@ -9,18 +10,56 @@ import {
 
 const router = Router();
 
-router.get('/events', (req: Request, res: Response) => {
+interface JWTPayload {
+  userId: number;
+  username?: string;
+  telegramId: number;
+  sessionId?: number;
+}
+
+interface AuthenticatedRequest extends Request {
+  user?: JWTPayload;
+}
+
+function authenticateToken(req: Request, res: Response, next: express.NextFunction) {
+  // Пробуем получить токен из заголовка или query параметра
+  const token = req.headers.authorization?.replace('Bearer ', '') || 
+                (req.query.token as string);
+  
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized: No token provided' });
+  }
+
+  try {
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      console.error('[SSE] JWT_SECRET is not set');
+      return res.status(500).json({ error: 'Server configuration error' });
+    }
+    
+    const payload = jwt.verify(token, secret) as JWTPayload;
+    (req as AuthenticatedRequest).user = payload;
+    next();
+  } catch (error) {
+    return res.status(401).json({ error: 'Unauthorized: Invalid token' });
+  }
+}
+
+router.get('/events', authenticateToken, (req: Request, res: Response) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
   (res as any).flushHeaders && (res as any).flushHeaders();
 
-  const user_id = req.query.user_id as string;
-  if (!user_id) {
-    res.status(400).end('No user_id');
+  const authReq = req as AuthenticatedRequest;
+  if (!authReq.user) {
+    res.status(401).end('Unauthorized');
     return;
   }
+  
+  // Берем user_id из токена
+  const user_id = authReq.user.userId.toString();
   addClient(user_id, res);
   
   // Send initial connection message
@@ -93,17 +132,33 @@ router.get('/events', (req: Request, res: Response) => {
   });
 });
 
-router.post('/subscribe', express.json(), (req: Request, res: Response) => {
-  const { user_id, event, event_id } = req.body;
-  if (!user_id || !event || !event_id) return res.status(400).send("Required: user_id, event, event_id");
+router.post('/subscribe', authenticateToken, express.json(), (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  if (!authReq.user) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  
+  const { event, event_id } = req.body;
+  if (!event || !event_id) return res.status(400).send("Required: event, event_id");
+  
+  // Берем user_id из токена
+  const user_id = authReq.user.userId.toString();
   subscribe(user_id, event, event_id);
   console.log(`[SSE] Subscribed: user_id=${user_id}, event=${event}, event_id=${event_id}`);
   res.send('OK');
 });
 
-router.post('/unsubscribe', express.json(), (req: Request, res: Response) => {
-  const { user_id, event, event_id } = req.body;
-  if (!user_id || !event || !event_id) return res.status(400).send("Required: user_id, event, event_id");
+router.post('/unsubscribe', authenticateToken, express.json(), (req: Request, res: Response) => {
+  const authReq = req as AuthenticatedRequest;
+  if (!authReq.user) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  
+  const { event, event_id } = req.body;
+  if (!event || !event_id) return res.status(400).send("Required: event, event_id");
+  
+  // Берем user_id из токена
+  const user_id = authReq.user.userId.toString();
   unsubscribe(user_id, event, event_id);
   res.send('OK');
 });
