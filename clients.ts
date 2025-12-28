@@ -13,13 +13,24 @@ export function addClient(user_id: string, res: Response) {
 export function removeClient(user_id: string) {
   clients.delete(user_id);
 }
-export function subscribe(user_id: string, event: string, event_id: string) {
+export function subscribe(user_id: string, event: string | string[], event_id: string) {
   const client = clients.get(user_id);
-  if (client) client.subscriptions.add(subscriptionKey(event, event_id));
+  if (client) 
+    if (Array.isArray(event)) {
+      event.forEach(e => client.subscriptions.add(subscriptionKey(e, event_id)));
+    } else {
+      client.subscriptions.add(subscriptionKey(event, event_id));
+    }
 }
-export function unsubscribe(user_id: string, event: string, event_id: string) {
+export function unsubscribe(user_id: string, event: string | string[], event_id: string) {
   const client = clients.get(user_id);
-  if (client) client.subscriptions.delete(subscriptionKey(event, event_id));
+  if (client) {
+    if (Array.isArray(event)) {
+      event.forEach(e => client.subscriptions.delete(subscriptionKey(e, event_id)));
+    } else {
+      client.subscriptions.delete(subscriptionKey(event, event_id));
+    }
+  }
 }
 export function subscriptionKey(event: string, event_id: string) {
   return `event:${event}|id:${event_id}`;
